@@ -34,6 +34,7 @@ TOP_K = 5
 MAX_DISTANCE = 0.6
 
 
+# ChromaDB
 def _client():
     import chromadb
     from chromadb.config import Settings
