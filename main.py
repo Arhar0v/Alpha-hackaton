@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 import functools
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.state import StatesGroup, State
@@ -142,7 +142,7 @@ async def profile(message: Message, author=None, edit_msg=False):
                        f"`{profile}`", reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
 
 
-@dp.message(F.text)  # ловит все сообщения пользователя, не начинающиеся на /
+@dp.message(F.text, StateFilter(None))  # ловит все сообщения пользователя, не начинающиеся на /
 async def handle_any_text(message: Message):
     if not message.text.startswith("/"):
         user_profile = None
