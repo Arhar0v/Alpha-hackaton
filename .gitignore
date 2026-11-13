@@ -1,0 +1,13 @@
+.idea
+
+# Секреты
+.env
+
+# Данные, порождаемые запуском
+data/chroma/
+
+# Python
+__pycache__/
+.venv/
+venv/
+.pytest_cache/

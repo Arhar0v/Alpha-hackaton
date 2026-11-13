@@ -1,0 +1,21 @@
+# Ядро
+# python-dotenv==1.0.1
+
+# RAG: векторный индекс и эмбеддинги
+# chromadb==1.5.9
+# sentence-transformers==3.0.1
+
+# Протокол вызова инструментов
+# mcp==1.2.0
+
+# LLM
+# gigachat==0.1.35
+# requests==2.32.3
+
+# Telegram
+aiogram==3.31.0
+psycopg2==2.9.13
+
+# Парсер
+beautifulsoup4==4.15.0
+
