@@ -15,7 +15,8 @@ settings = {
     "database": "alfa_course_hackathon",
     "user": "postgres",
     "password": DB_PASSWORD,
-    "host": "127.0.0.1"
+    "host": "127.0.0.1",
+    "port": "5432"
 }
 
 

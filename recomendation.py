@@ -2,11 +2,14 @@ from sentence_transformers import SentenceTransformer, util
 import numpy as np
 from typing import List, Literal, Any
 from pydantic import BaseModel, Field, ConfigDict
-import psycopg
-from psycopg.rows import dict_row
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import config
+from config import settings
+from main import create_connection, db_connection
 
-# модель сравнивает векторы последних сообщений с векторами описаний курсов
 
+# Модель сравнивает векторы последних сообщений с векторами описаний курсов
 class RecomendEmbedModel:
     def __init__(self, model_name: str="sergeyzh/LaBSE-ru-turbo"):
         self.model = SentenceTransformer(model_name)
@@ -26,7 +29,7 @@ class FormatCourses(BaseModel):
     description: str = Field(description='Описание курса')
     category: Literal["courses", "articles"] = Field(description='Тип образовательных материалов')
     url: str = Field(description='Ссылка на ресурс')
-    embedding: np.ndarray = Field(description='Эмбеддинг текста')
+    embedding: List = Field(description='Эмбеддинг текста')
 
 
 description_courses = [] # описание курсов в формате FormatCourses
@@ -34,42 +37,25 @@ history = 'Как аннулировать товарный знак?' # ист�
 model = RecomendEmbedModel()
 
 
-# подключение к БД за таблицами с курсами (Articles, Courses, Lessons)
-DB_HOST = "localhost"
-DB_PORT = "5432"
-DB_NAME = "alfa_course_hackathon"
-DB_USER = "postgres"
-DB_PASS = "1234"
+# Подключение к БД за таблицами с курсами (Articles, Courses, Lessons)
+with db_connection() as connection:
+    with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+        for course in ['Articles', 'Courses']:
+            cursor.execute(f'SELECT * FROM "{course}" LIMIT {config.TOP_K};')
+            rows = cursor.fetchall()
+print(rows)
+for row in rows:
+    desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row['DescriptionTag']
+    tit_navig = '' if 'TitleNavigation' not in row or row['TitleNavigation'] is None else row['TitleNavigation']
+    print(desc_tag, tit_navig)
+    description_courses.append(FormatCourses(category=course.lower(),
+                                             title=row['Title'],
+                                             description=desc_tag + tit_navig,
+                                             url=row['Url'],
+                                             embedding=model.embed_query(f'{row["Title"]}. {desc_tag + tit_navig}')))
 
-try:
-    conn = psycopg.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        host=DB_HOST,
-        port=DB_PORT,
-        row_factory=dict_row
-    )
-    cur = conn.cursor()
-    for course in ['Articles', 'Courses']:
-        cur.execute(f'SELECT * FROM "{course}" LIMIT 5;')
-        rows = cur.fetchall()
-        for row in rows:
-            desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row['DescriptionTag']
-            tit_navig = '' if 'TitleNavigation' not in row or row['TitleNavigation'] is None else row['TitleNavigation']
-            description_courses.append(FormatCourses(category=course.lower(),
-                                                     title=row['Title'],
-                                                     description=desc_tag + tit_navig,
-                                                     url=row['Url'],
-                                                     embedding=model.embed_query(f'{row['Title']}. {desc_tag + tit_navig}')))
-    cur.close()
-    conn.close()
 
-except Exception as e:
-    print(f"Ошибка подключения: {e}")
-
-def get_courses(query: str, items: List[FormatCourses],
-                model: SentenceTransformer, k: int=3, category: str = None) -> List[FormatCourses]:
+def get_courses(query: str, items: List[FormatCourses], model: SentenceTransformer, k: int=3, category: str = None) -> List[FormatCourses]:
     if category:
         items = [i for i in items if i.category == category]
     if not items:
