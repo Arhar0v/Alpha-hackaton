@@ -8,23 +8,32 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import LinkPreviewOptions
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
 import config
 from config import settings
 import psycopg2
+from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 
+import numpy as np
+
 from llm_client import OpenAILikeLLM, InputMessage
-from typing import List
+from typing import List, Literal, Any
 from string import Template
-import asyncio
+
+from recomendation import RecomendEmbedModel, FormatCourses
+from sentence_transformers import SentenceTransformer, util
+from pydantic import BaseModel, Field, ConfigDict
 
 
 ### -------------> Настройки <-------------
 bot_is_on = True  # по дефолту выключено, т.к. на одного бота может быть не более 1 подключения (1 человек может запускать бота)
+ml_emoji = "🚀"
 profile_emoji = "💼"
+recomendation_emoji = "🎓"
 
 
 ### -------------> Диспетчер <-------------
@@ -67,6 +76,10 @@ with db_connection() as connection:
         cursor.execute("""CREATE TABLE IF NOT EXISTS users(
                     user_id BIGINT PRIMARY KEY,
                     profile VARCHAR(500))""")
+        # cursor.execute("""CREATE TABLE IF NOT EXISTS chat_history(
+        #                     qa_id BIGINT
+        #                     user_id BIGINT PRIMARY KEY,
+        #                     profile VARCHAR(500))""")
 
 
 ### ----------------> main <----------------
@@ -120,8 +133,17 @@ async def start(message: Message):
     author = message.from_user
     member = await get_member(author)
     await message.answer(f"Здравствуйте {member}! Я являюсь персональным ИИ-помощником для предпринимателей от компании Альфа-Банк. \n\n"
+                         f"Если вам нужен список моих команд, то используйте /help.\n\n"
                          f"Чтобы мои ответы были точнее и полезнее, для начала расскажите о себе и вашем деле, воспользовавшись командой /profile.\n\n"
                          f"После этого смело продолжайте диалог, я буду отвечать на интересующие вас вопросы.")
+
+@dp.message(Command("help"))
+async def help(message: Message):
+    await message.answer(f"{ml_emoji} Команды:\n"
+                         "/start — регистрация в системе\n"
+                         "/help — список команд\n"
+                         "/profile — информация о вас и вашем деле\n"
+                         "/study — рекомендации по обучающим материалам")
 
 
 @dp.message(Command("profile"))
@@ -140,6 +162,50 @@ async def profile(message: Message, author=None, edit_msg=False):
     profile = profile[0] if profile is not None else "Отсутствует"
     await reply_method(f"{profile_emoji} Информация о вас и вашем деле:\n"
                        f"`{profile}`", reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
+
+@dp.message(Command("study"))
+async def study(message: Message):
+    description_courses = []  # описание курсов в формате FormatCourses
+    history = 'Как аннулировать товарный знак?'  # история сообщений (str), по которой идет поиск
+    model = RecomendEmbedModel()
+    with db_connection() as connection:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            for course in ['Articles', 'Courses']:
+                cursor.execute(f'SELECT * FROM "{course}" LIMIT {config.TOP_K};')
+                rows = cursor.fetchall()
+                for row in rows:
+                    desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row[
+                        'DescriptionTag']
+                    tit_navig = '' if 'TitleNavigation' not in row or row['TitleNavigation'] is None else row[
+                        'TitleNavigation']
+                    description_courses.append(FormatCourses(category=course.lower(),
+                                                             title=row['Title'],
+                                                             description=desc_tag + tit_navig,
+                                                             url=f"https://kurs.alfabank.ru/{course.lower()}/{row['Url']}/",
+                                                             embedding=model.embed_query(f'{row["Title"]}. {desc_tag + tit_navig}')))
+    def get_courses(query: str, items: List[FormatCourses], model: SentenceTransformer, k: int = 3, category: str = None):
+        if category:
+            items = [i for i in items if i.category == category]
+        if not items:
+            return []
+
+        matrix = np.vstack([i.embedding for i in items])
+        q_emb = model.embed_query(query)
+        scores = util.cos_sim(q_emb, matrix)[0]
+        top_idx = np.argsort(scores.numpy())[::-1][:k]
+        res = [[items[i].title, items[i].description, items[i].category, items[i].url] for i in top_idx]
+        return res
+
+    recomendation_text = []
+    recomendations = get_courses(history, description_courses, model)
+    for i, recomendation in enumerate(recomendations):
+        title, description, category, url = recomendation
+        recomendation_text.append(f"*{i+1}) {title}:*\n"
+                                  f"{description}\n"
+                                  f"[Ссылка на материал]({url})")
+    await message.answer(f"{recomendation_emoji} Список рекомендуемых образовательных материалов:\n" +
+                          "\n\n".join(recomendation_text), parse_mode=ParseMode.MARKDOWN,
+                            link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 
 @dp.message(F.text, StateFilter(None))  # ловит все сообщения пользователя, не начинающиеся на / и не имеющие активного state
@@ -172,6 +238,7 @@ async def handle_any_text(message: Message):
                 break
         for answer_part in answer_parts:
             await message.answer(answer_part, parse_mode=ParseMode.MARKDOWN)
+
 
 
 

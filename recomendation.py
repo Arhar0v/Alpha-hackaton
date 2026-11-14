@@ -6,7 +6,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import config
 from config import settings
-from main import create_connection, db_connection
+# from main import create_connection, db_connection
 
 
 # Модель сравнивает векторы последних сообщений с векторами описаний курсов
@@ -32,39 +32,44 @@ class FormatCourses(BaseModel):
     embedding: List = Field(description='Эмбеддинг текста')
 
 
-description_courses = [] # описание курсов в формате FormatCourses
-history = 'Как аннулировать товарный знак?' # история сообщений (str), по которой идет поиск
-model = RecomendEmbedModel()
+# description_courses = [] # описание курсов в формате FormatCourses
+# history = 'Как аннулировать товарный знак?' # история сообщений (str), по которой идет поиск
+# model = RecomendEmbedModel()
+#
+#
+# # Подключение к БД за таблицами с курсами (Articles, Courses, Lessons)
+# with db_connection() as connection:
+#     with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+#         for course in ['Articles', 'Courses']:
+#             cursor.execute(f'SELECT * FROM "{course}" LIMIT {config.TOP_K};')
+#             rows = cursor.fetchall()
+#             print(rows)
+#             for row in rows:
+#                 desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row['DescriptionTag']
+#                 tit_navig = '' if 'TitleNavigation' not in row or row['TitleNavigation'] is None else row['TitleNavigation']
+#                 print(desc_tag, tit_navig)
+#                 description_courses.append(FormatCourses(category=course.lower(),
+#                                                          title=row['Title'],
+#                                                          description=desc_tag + tit_navig,
+#                                                          url=f"https://kurs.alfabank.ru/{course.lower()}/{row['Url']}/",
+#                                                          embedding=model.embed_query(f'{row["Title"]}. {desc_tag + tit_navig}')))
+#
+#
+# def get_courses(query: str, items: List[FormatCourses], model: SentenceTransformer, k: int=3, category: str = None) -> List[FormatCourses]:
+#     if category:
+#         items = [i for i in items if i.category == category]
+#     if not items:
+#         return []
+#
+#     matrix = np.vstack([i.embedding for i in items])
+#     q_emb = model.embed_query(query)
+#     scores = util.cos_sim(q_emb, matrix)[0]
+#     top_idx = np.argsort(scores.numpy())[::-1][:k]
+#     res = [{"title": items[i].title,
+#             "description": items[i].description,
+#             "category": items[i].category,
+#             "url": items[i].url} for i in top_idx]
+#     return res
+#     # return [items[i].title for i in top_idx]
 
-
-# Подключение к БД за таблицами с курсами (Articles, Courses, Lessons)
-with db_connection() as connection:
-    with connection.cursor(cursor_factory=RealDictCursor) as cursor:
-        for course in ['Articles', 'Courses']:
-            cursor.execute(f'SELECT * FROM "{course}" LIMIT {config.TOP_K};')
-            rows = cursor.fetchall()
-print(rows)
-for row in rows:
-    desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row['DescriptionTag']
-    tit_navig = '' if 'TitleNavigation' not in row or row['TitleNavigation'] is None else row['TitleNavigation']
-    print(desc_tag, tit_navig)
-    description_courses.append(FormatCourses(category=course.lower(),
-                                             title=row['Title'],
-                                             description=desc_tag + tit_navig,
-                                             url=row['Url'],
-                                             embedding=model.embed_query(f'{row["Title"]}. {desc_tag + tit_navig}')))
-
-
-def get_courses(query: str, items: List[FormatCourses], model: SentenceTransformer, k: int=3, category: str = None) -> List[FormatCourses]:
-    if category:
-        items = [i for i in items if i.category == category]
-    if not items:
-        return []
-
-    matrix = np.vstack([i.embedding for i in items])
-    q_emb = model.embed_query(query)
-    scores = util.cos_sim(q_emb, matrix)[0]
-    top_idx = np.argsort(scores.numpy())[::-1][:k]
-    return [items[i].title for i in top_idx]
-
-print(get_courses(history, description_courses, model))
+# print(get_courses(history, description_courses, model))
