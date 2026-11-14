@@ -68,4 +68,3 @@ if __name__ == "__main__":
         print(f"Индекс пересобран заново. Проиндексировано чанков: {count}")
         print(f"Всего в коллекции: {config.get_collection().count()}")
 
-    # evaluate_retrieval()

@@ -35,6 +35,7 @@ TOP_K = 5
 MAX_DISTANCE = 0.6
 N_MSG_HISTORY = 5
 
+
 # ChromaDB
 def _client():
     import chromadb

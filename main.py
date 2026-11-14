@@ -17,6 +17,7 @@ from config import settings
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import numpy as np
 
@@ -34,6 +35,12 @@ bot_is_on = True  # по дефолту выключено, т.к. на одно
 ml_emoji = "🚀"
 profile_emoji = "💼"
 recomendation_emoji = "🎓"
+
+
+
+### --------> Планировщик задач <--------
+scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
+
 
 
 ### -------------> Диспетчер <-------------
@@ -82,6 +89,17 @@ with db_connection() as connection:
                             question TEXT,
                             answer TEXT,
                             created_at TIMESTAMPTZ DEFAULT NOW())""")
+        # cursor.execute("""CREATE TABLE IF NOT EXISTS tasks(
+        #                 task_id SERIAL PRIMARY KEY,
+        #                 task VARCHAR(256),
+        #                 user_id BIGINT)""")
+        # cursor.execute("""CREATE TABLE IF NOT EXISTS reminders(
+        #                 reminder_id SERIAL PRIMARY KEY,
+        #                 task_id INT REFERENCES tasks(task_id) ON DELETE CASCADE,
+        #                 remind_at TIMESTAMPTZ,
+        #                 daily BOOL,
+        #                 yearly BOOLEAN,
+        #                 user_id BIGINT)""")
 
 
 ### ----------------> main <----------------
@@ -124,7 +142,7 @@ async def delete_profile_1st_step(callback: CallbackQuery):
             cursor.execute("SELECT 1 FROM users WHERE user_id = %s", (author.id,))
             is_exists = cursor.fetchone()
             if is_exists is not None:
-                cursor.execute("DELETE FROM users WHERE user_id = %s", (author.id,))
+                cursor.execute("UPDATE users SET profile = NULL WHERE user_id = %s", (author.id,))
     await profile(callback.message, author=author, edit_msg=True)
 
 
@@ -134,6 +152,11 @@ async def delete_profile_1st_step(callback: CallbackQuery):
 async def start(message: Message):
     author = message.from_user
     member = await get_member(author)
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1 FROM users WHERE user_id = %s LIMIT 1", (author.id,))
+            if cursor.fetchone() is None:
+                cursor.execute(f"INSERT INTO users VALUES (%s, NULL)", (author.id,))
     await message.answer(f"Здравствуйте {member}! Я являюсь персональным ИИ-помощником для предпринимателей от компании Альфа-Банк. \n\n"
                          f"Если вам нужен список моих команд, то используйте /help.\n\n"
                          f"Чтобы мои ответы были точнее и полезнее, для начала расскажите о себе и вашем деле, воспользовавшись командой /profile.\n\n"
@@ -161,7 +184,7 @@ async def profile(message: Message, author=None, edit_msg=False):
         with connection.cursor() as cursor:
             cursor.execute("SELECT profile FROM users WHERE user_id = %s", (author.id,))
             profile = cursor.fetchone()
-    profile = profile[0] if profile is not None else "Отсутствует"
+    profile = profile[0] if profile is not None and profile[0] is not None else "Отсутствует"
     await reply_method(f"{profile_emoji} Информация о вас и вашем деле:\n"
                        f"`{profile}`", reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
 
@@ -275,8 +298,6 @@ async def get_history(author):  # история диалога с ИИ-помо
         history.append({"role": "assistant", "content": row[1]})
     return history
 
-
-### -----------> generation <-----------
 async def generate_answer(query: str, context, user_profile: str = None, history: list = None):
     llm = OpenAILikeLLM(
         base_url='https://api.groq.com/openai/v1',
@@ -306,6 +327,7 @@ async def generate_answer(query: str, context, user_profile: str = None, history
 
     answer = await llm.generate_answer(messages)
     return answer.content
+
 
 
 
