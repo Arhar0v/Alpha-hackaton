@@ -76,10 +76,12 @@ with db_connection() as connection:
         cursor.execute("""CREATE TABLE IF NOT EXISTS users(
                     user_id BIGINT PRIMARY KEY,
                     profile VARCHAR(500))""")
-        # cursor.execute("""CREATE TABLE IF NOT EXISTS chat_history(
-        #                     qa_id BIGINT
-        #                     user_id BIGINT PRIMARY KEY,
-        #                     profile VARCHAR(500))""")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS chat_history(
+                            qa_id SERIAL PRIMARY KEY,
+                            user_id BIGINT NOT NULL,
+                            question TEXT,
+                            answer TEXT,
+                            created_at TIMESTAMPTZ DEFAULT NOW())""")
 
 
 ### ----------------> main <----------------
@@ -166,18 +168,21 @@ async def profile(message: Message, author=None, edit_msg=False):
 @dp.message(Command("study"))
 async def study(message: Message):
     description_courses = []  # описание курсов в формате FormatCourses
-    history = 'Как аннулировать товарный знак?'  # история сообщений (str), по которой идет поиск
     model = RecomendEmbedModel()
+    history_rows = await get_history(message.from_user)
+    question_history = []
+    for row in history_rows:
+        if row["role"] == "user":
+            question_history.append(row["content"])
+    history = "\n".join(question_history)
     with db_connection() as connection:
         with connection.cursor(cursor_factory=RealDictCursor) as cursor:
             for course in ['Articles', 'Courses']:
                 cursor.execute(f'SELECT * FROM "{course}" LIMIT {config.TOP_K};')
                 rows = cursor.fetchall()
                 for row in rows:
-                    desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row[
-                        'DescriptionTag']
-                    tit_navig = '' if 'TitleNavigation' not in row or row['TitleNavigation'] is None else row[
-                        'TitleNavigation']
+                    desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row['DescriptionTag']
+                    tit_navig = '' if 'TitleNavigation' not in row or row['TitleNavigation'] is None else row['TitleNavigation']
                     description_courses.append(FormatCourses(category=course.lower(),
                                                              title=row['Title'],
                                                              description=desc_tag + tit_navig,
@@ -211,13 +216,15 @@ async def study(message: Message):
 @dp.message(F.text, StateFilter(None))  # ловит все сообщения пользователя, не начинающиеся на / и не имеющие активного state
 async def handle_any_text(message: Message):
     if not message.text.startswith("/"):
+        author = message.from_user
         user_profile = None
         with db_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT profile FROM users WHERE user_id = %s", (message.from_user.id,))
+                cursor.execute("SELECT profile FROM users WHERE user_id = %s", (author.id,))
                 row = cursor.fetchone()
                 if row:
                     user_profile = row[0]
+        history = await get_history(author)
         query = message.text
         results = config.get_collection().query(query_texts=[query], n_results=config.TOP_K)
         documents = results["documents"][0]
@@ -226,9 +233,12 @@ async def handle_any_text(message: Message):
         for doc, dist in zip(documents, distances):
             if dist <= config.MAX_DISTANCE:  # если расстояние меньше порога, берем
                 context.append(doc)
-        answer = await generate_answer(query, context, user_profile)
+        answer = await generate_answer(query, context, user_profile, history)
         answer = answer.replace("**", "*")
         answer = answer.replace("   -", "   •")
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO chat_history (user_id, question, answer) VALUES (%s, %s, %s)", (author.id, query, answer))
         answer_char_limit = 4000
         answer_parts = []
         for i in range(0, len(answer), answer_char_limit):
@@ -252,8 +262,22 @@ async def get_member(author):
     return member
 
 
+async def get_history(author):  # история диалога с ИИ-помощником
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT question, answer FROM chat_history WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
+                (author.id, config.N_MSG_HISTORY))
+            history_rows = cursor.fetchall()
+            history_rows = history_rows[::-1]
+    history = []
+    for i, row in enumerate(history_rows):
+        history.append({"role": "user", "content": row[0]})
+        history.append({"role": "assistant", "content": row[1]})
+    return history
+
+
 ### -----------> generation <-----------
-async def generate_answer(query: str, context, user_profile):
+async def generate_answer(query: str, context, user_profile: str = None, history: list = None):
     llm = OpenAILikeLLM(
         base_url='https://api.groq.com/openai/v1',
         api_key=config.GROQ_API_KEY,
@@ -267,13 +291,19 @@ async def generate_answer(query: str, context, user_profile):
         system_prompt += f"\n\nИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ (учитывай её для персонализации ответа, "\
                          f"но не бери отсюда факты, если их нет в контексте):\n{user_profile}"
 
+    messages = [
+        InputMessage(role="system", content=system_prompt)
+    ]
+
+    if history:
+        for msg in history:
+            messages.append(InputMessage(role=msg["role"], content=msg["content"]))
+
     USER_PROMPT = Template("Вопрос: $query\n\nКонтекст (единственные источники правды):\n$context")
     user_prompt = USER_PROMPT.substitute({"query": query, "context": "\n\n".join(context)})
+    messages.append(InputMessage(role="user", content=user_prompt))
 
-    messages = [
-        InputMessage(role="system", content=system_prompt),
-        InputMessage(role="user", content=user_prompt)
-    ]
+
     answer = await llm.generate_answer(messages)
     return answer.content
 

@@ -33,7 +33,7 @@ CHUNK_SIZE = 512
 CHUNK_OVERLAP = 64
 TOP_K = 5
 MAX_DISTANCE = 0.6
-
+N_MSG_HISTORY = 5
 
 # ChromaDB
 def _client():
