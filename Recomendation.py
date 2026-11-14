@@ -52,7 +52,7 @@ try:
     )
     cur = conn.cursor()
     for course in ['Articles', 'Courses']:
-        cur.execute(f'SELECT * FROM "{course}" LIMIT 5;')
+        cur.execute(f'SELECT * FROM "{course}";')
         rows = cur.fetchall()
         for row in rows:
             desc_tag = '' if 'DescriptionTag' not in row or row['DescriptionTag'] is None else row['DescriptionTag']
@@ -61,7 +61,7 @@ try:
                                                      title=row['Title'],
                                                      description=desc_tag + tit_navig,
                                                      url=row['Url'],
-                                                     embedding=model.embed_query(f'{row['Title']}. {desc_tag + tit_navig}')))
+                                                     embedding=model.embed_query(f'{row["Title"]}. {desc_tag + tit_navig}')))
     cur.close()
     conn.close()
 
@@ -79,6 +79,6 @@ def get_courses(query: str, items: List[FormatCourses],
     q_emb = model.embed_query(query)
     scores = util.cos_sim(q_emb, matrix)[0]
     top_idx = np.argsort(scores.numpy())[::-1][:k]
-    return [items[i].title for i in top_idx]
+    return [(items[i].title, items[i].category) for i in top_idx]
 
 print(get_courses(history, description_courses, model))
