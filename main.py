@@ -142,7 +142,7 @@ async def profile(message: Message, author=None, edit_msg=False):
                        f"`{profile}`", reply_markup=kb, parse_mode=ParseMode.MARKDOWN)
 
 
-@dp.message(F.text, StateFilter(None))  # ловит все сообщения пользователя, не начинающиеся на /
+@dp.message(F.text, StateFilter(None))  # ловит все сообщения пользователя, не начинающиеся на / и не имеющие активного state
 async def handle_any_text(message: Message):
     if not message.text.startswith("/"):
         user_profile = None
@@ -163,7 +163,15 @@ async def handle_any_text(message: Message):
         answer = await generate_answer(query, context, user_profile)
         answer = answer.replace("**", "*")
         answer = answer.replace("   -", "   •")
-        await message.answer(answer, parse_mode=ParseMode.MARKDOWN)
+        answer_char_limit = 4000
+        answer_parts = []
+        for i in range(0, len(answer), answer_char_limit):
+            part = answer[i:i + answer_char_limit]
+            answer_parts.append(part.strip())
+            if i + answer_char_limit >= len(answer):
+                break
+        for answer_part in answer_parts:
+            await message.answer(answer_part, parse_mode=ParseMode.MARKDOWN)
 
 
 
