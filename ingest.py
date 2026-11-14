@@ -1,11 +1,9 @@
-import re
 import hashlib
 from bs4 import BeautifulSoup
 import config
 from main import create_connection, db_connection
 
 mode = "eval"
-
 
 def clean_text(html_text: str) -> str:
     if not html_text:
@@ -67,4 +65,3 @@ if __name__ == "__main__":
         count = ingest()
         print(f"Индекс пересобран заново. Проиндексировано чанков: {count}")
         print(f"Всего в коллекции: {config.get_collection().count()}")
-
