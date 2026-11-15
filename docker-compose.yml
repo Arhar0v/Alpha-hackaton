@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: alfa_course_hackathon
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Добавляем монтирование бэкапа и скрипта восстановления:
+      - ./alfa_course_hackathon.backup:/docker-entrypoint-initdb.d/alfa_course_hackathon.backup
+      - ./init_db.sh:/docker-entrypoint-initdb.d/init_db.sh
+
+  app:
+    volumes:
+       - ./data:/app/data
+    build: .
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=db 
+      - DB_PORT=5432
+      - DB_NAME=alfa_course_hackathon
+      - DB_USER=postgres
+      - DB_PASSWORD=${DB_PASSWORD}
+
+volumes:
+  pgdata:

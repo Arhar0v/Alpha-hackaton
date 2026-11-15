@@ -11,11 +11,11 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 # Найстройки БД и токена бота в тг
 settings = {
     "token": TG_BOT_TOKEN,
-    "database": "alfa_course_hackathon",
-    "user": "postgres",
+    "database": os.getenv("DB_NAME", "alfa_course_hackathon"),
+    "user": os.getenv("DB_USER", "postgres"),
     "password": DB_PASSWORD,
-    "host": "127.0.0.1",
-    "port": "5432"
+    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "port": os.getenv("DB_PORT", "5432")
 }
 
 
